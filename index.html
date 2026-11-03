@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>지역별 AI 분리수거 챔피언십 & 보상 시스템</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+    * { box-sizing: border-box; font-family: 'Pretendard', sans-serif; }
+
+    body {
+      margin: 0; padding: 20px 10px; min-height: 100vh;
+      background-color: #e8f4f8;
+      background-image: radial-gradient(#cbe3eb 15%, transparent 16%), radial-gradient(#cbe3eb 15%, transparent 16%);
+      background-size: 60px 60px; background-position: 0 0, 30px 30px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    header {
+      text-align: center; margin-bottom: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px 30px; border-radius: 20px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+      width: 100%; max-width: 960px;
+    }
+    header h1 { color: #2b7a4b; margin: 0 0 5px 0; font-size: 26px; }
+    header p { color: #666; margin: 0; font-size: 14px; }
+
+    .screen { width: 100%; max-width: 960px; display: none; }
+    .screen.active { display: flex; flex-direction: column; align-items: center; }
+
+    /* 로그인 카드 */
+    .login-card {
+      background: rgba(255, 255, 255, 0.98); border-radius: 24px; padding: 30px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.1); width: 100%; max-width: 500px;
+    }
+    .form-group { margin-bottom: 15px; display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 14px; font-weight: bold; color: #2c3e50; }
+    .form-group input, .form-group select {
+      padding: 12px; border: 1px solid #dcdde1; border-radius: 10px; font-size: 15px; outline: none;
+    }
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+
+    /* 쓰레기통 배너 */
+    .bin-station {
+      display: flex; gap: 12px; justify-content: center; width: 100%; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .bin-item {
+      flex: 1; min-width: 90px; max-width: 130px; background: #ffffff;
+      border-radius: 16px 16px 10px 10px; border-top: 10px solid #ccc; padding: 10px 8px; text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .bin-paper { border-top-color: #2b70c9; }
+    .bin-pet { border-top-color: #27ae60; }
+    .bin-can { border-top-color: #f39c12; }
+    .bin-trash { border-top-color: #e74c3c; }
+
+    /* 대시보드 */
+    .dashboard { display: flex; flex-wrap: wrap; gap: 20px; width: 100%; justify-content: center; }
+    .card {
+      background: rgba(255, 255, 255, 0.95); border-radius: 24px; padding: 25px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08); flex: 1; min-width: 320px;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    .user-bar {
+      width: 100%; background: #f0f9f4; border: 1px solid #c8e6c9; border-radius: 12px;
+      padding: 10px 15px; margin-bottom: 15px; display: flex; justify-content: space-between;
+      align-items: center; font-size: 14px; color: #1b5e20; font-weight: 600;
+    }
+
+    .webcam-wrapper {
+      position: relative; width: 220px; height: 220px; border-radius: 50%;
+      border: 6px solid #27ae60; overflow: hidden; box-shadow: 0 8px 20px rgba(39, 174, 96, 0.2);
+      background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+    }
+    #webcam-container canvas { width: 100% !important; height: 100% !important; object-fit: cover; }
+
+    .result-box { width: 100%; background: #f8faf9; border: 2px solid #e1ebe5; border-radius: 16px; padding: 15px; text-align: center; }
+    .result-title { font-size: 17px; font-weight: bold; color: #2c3e50; margin-bottom: 6px; }
+    .result-desc { font-size: 13px; color: #555; line-height: 1.4; margin: 0; }
+
+    .score-banner {
+      width: 100%; background: linear-gradient(135deg, #27ae60, #2ecc71); color: white;
+      padding: 15px; border-radius: 16px; text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 15px;
+    }
+
+    .mission-list { width: 100%; list-style: none; padding: 0; margin: 0 0 15px 0; }
+    .mission-item {
+      background: #f9fbf9; border: 1px solid #e3eae5; border-radius: 12px;
+      padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 14px;
+    }
+    .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+    .badge-wait { background: #ffeaa7; color: #d63031; }
+    .badge-done { background: #55efc4; color: #008148; }
+
+    /* 버튼 스타일 */
+    .btn {
+      width: 100%; background: #27ae60; color: white; border: none; padding: 14px;
+      border-radius: 14px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; margin-top: 8px;
+    }
+    .btn:hover { background: #219150; }
+    .btn-attendance { background: #f39c12; }
+    .btn-attendance:hover { background: #d35400; }
+    .btn-cash { background: #3498db; }
+    .btn-cash:hover { background: #2980b9; }
+
+    /* 결과 & 캐시 전환소 카드 */
+    .rank-card {
+      background: white; border-radius: 24px; padding: 25px; width: 100%; max-width: 600px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.1); text-align: center;
+    }
+    .rank-highlight {
+      background: #e8f8f0; border: 2px dashed #27ae60; border-radius: 16px; padding: 20px; margin: 15px 0;
+    }
+    .rank-number { font-size: 34px; font-weight: 900; color: #27ae60; }
+    .prize-tag {
+      display: inline-block; background: #f1c40f; color: #2c3e50; padding: 6px 14px;
+      border-radius: 20px; font-weight: bold; font-size: 13px; margin-top: 8px;
+    }
+    
+    /* 출석 체크 모달/박스 스타일 */
+    .attendance-box {
+      background: #fffdf4; border: 1px solid #fce38a; border-radius: 16px; padding: 15px; width: 100%; margin-bottom: 15px; text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🏆 지역별 AI 분리수거 챔피언십 (월말 보상 & 캐시 전환)</h1>
+    <p>10/01 ~ 10/30 출석 및 점수 경쟁! 1,000위 이내 상품 지급 및 포인트 캐시 전환 시스템</p>
+  </header>
+
+  <!-- [화면 1] 로그인 -->
+  <div id="screen-login" class="screen active">
+    <div class="login-card">
+      <h2 style="margin-top:0; color:#2c3e50; text-align:center;">참가자 프로필 설정</h2>
+      <div class="form-group">
+        <label>닉네임</label>
+        <input type="text" id="input-nickname" value="분리수거왕휴">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>시/도</label>
+          <select id="input-sido"><option value="인천광역시" selected>인천광역시</option></select>
+        </div>
+        <div class="form-group">
+          <label>시/군/구</label>
+          <input type="text" id="input-sigungu" value="서구">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>아파트/건물명</label>
+        <input type="text" id="input-apt" value="검단 푸르지오">
+      </div>
+      <button class="btn" onclick="startApp()">게임 시작하기 🚀</button>
+    </div>
+  </div>
+
+  <!-- [화면 2] 게임 플레이 및 출석 체크 -->
+  <div id="screen-game" class="screen">
+    <div class="bin-station">
+      <div class="bin-item bin-paper"><b>종이</b>📄</div>
+      <div class="bin-item bin-pet"><b>페트병</b>🥤</div>
+      <div class="bin-item bin-can"><b>캔류</b>🥫</div>
+      <div class="bin-item bin-trash"><b>일반</b>🗑️</div>
+    </div>
+
+    <div class="dashboard">
+      <div class="card">
+        <div class="user-bar">
+          <span id="user-info-text">👤 닉네임 (지역)</span>
+          <span style="color:#27ae60;">● 10월 시즌 진행중</span>
+        </div>
+        <button class="btn" id="start-btn" onclick="initCam()">카메라 켜기 📷</button>
+        <div class="webcam-wrapper" id="webcam-container">
+          <span style="color: #999; font-size: 13px;">카메라 대기 중</span>
+        </div>
+        <div class="result-box">
+          <div class="result-title" id="predicted-label">대기 중...</div>
+          <p class="result-desc" id="disposal-guide">카메라에 쓰레기를 비춰주세요.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="score-banner">
+          누적 포인트: <span id="score">0</span>점
+        </div>
+
+        <!-- 출석체크 및 오늘의 버프 위젯 -->
+        <div class="attendance-box">
+          <div style="font-weight:bold; font-size:14px; color:#d35400; margin-bottom:4px;">📅 일일 출석체크 & 버프 시스템</div>
+          <div id="attendance-status" style="font-size:13px; color:#555; margin-bottom:8px;">오늘의 버프: <b>[점수 2배 획득!]</b></div>
+          <button class="btn btn-attendance" id="attend-btn" onclick="checkAttendance()">출석 체크하고 보상 받기 (+200점)</button>
+        </div>
+
+        <h3 style="margin:0 0 8px 0; color:#2c3e50; font-size:14px; width:100%;">분리수거 미션</h3>
+        <ul class="mission-list">
+          <li class="mission-item"><span>📄 종이 / 종이팩</span><span id="check-paper" class="badge badge-wait">미완료</span></li>
+          <li class="mission-item"><span>🥤 페트병 / 플라스틱</span><span id="check-pet" class="badge badge-wait">미완료</span></li>
+          <li class="mission-item"><span>🥫 캔 / 고철류</span><span id="check-can" class="badge badge-wait">미완료</span></li>
+        </ul>
+
+        <button class="btn" onclick="finishGame()">월말 1,000위 순위 및 보상 확인 🏆</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- [화면 3] 결과, 1000위 보상 및 포인트 캐시 전환소 -->
+  <div id="screen-result" class="screen">
+    <div class="rank-card">
+      <h2 style="margin:0; color:#2c3e50;">📊 10월 30일 시즌 마감 결과</h2>
+      <p style="color:#666; font-size:14px; margin-top:4px;" id="result-region-title">인천 서구 지역 최종 랭킹</p>
+
+      <div class="rank-highlight">
+        <div style="font-size:14px; color:#555;">나의 지역 최종 순위</div>
+        <div class="rank-number"><span id="my-rank-num">--</span>위</div>
+        <div style="font-size:15px; font-weight:bold; color:#2c3e50; margin-top:5px;">
+          최종 누적 점수: <span id="final-score">0</span>점
+        </div>
+        <div id="prize-badge-container"></div>
+      </div>
+
+      <!-- 아쉬움을 달래줄 포인트 캐시 전환소 -->
+      <div style="background: #f0f4f8; border-radius: 16px; padding: 15px; margin-bottom: 20px; text-align: left;">
+        <div style="font-weight: bold; color: #2980b9; font-size: 15px; margin-bottom: 5px;">💳 포인트 ➡️ 캐시 전환소 (1,000점당 100원)</div>
+        <div style="font-size: 13px; color: #555; margin-bottom: 10px;">
+          1000위에 들지 못해 아쉬우신가요? 모은 점수를 현금성 캐시로 전환해 계속 사용하세요!
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold;">
+          <span>전환 가능 캐시: <span id="cash-amount" style="color: #e74c3c;">0원</span></span>
+          <button class="btn btn-cash" style="width: auto; padding: 8px 16px; margin: 0;" onclick="convertToCash()">캐시로 환전하기</button>
+        </div>
+      </div>
+
+      <button class="btn" onclick="restartGame()">다음 시즌 도전하기 🔄</button>
+    </div>
+  </div>
+
+  <script>
+    const URL = "./model/";
+    let model, webcam, isStarted = false, score = 0;
+    let isCheckedToday = false; // 오늘 출석 여부
+
+    let userInfo = { nickname: '', sigungu: '', apt: '', fullRegion: '' };
+
+    const guideMap = {
+      "종이": { guide: "📦 물기에 젖지 않게 펼쳐서 배출하세요.", checkId: "check-paper" },
+      "페트병": { guide: "🥤 라벨을 떼어낸 뒤 압축하여 배출하세요.", checkId: "check-pet" },
+      "캔": { guide: "🥫 내용물을 헹군 뒤 분리배출 하세요.", checkId: "check-can" }
+    };
+
+    function startApp() {
+      const nickname = document.getElementById("input-nickname").value.trim();
+      const sigungu = document.getElementById("input-sigungu").value.trim();
+      const apt = document.getElementById("input-apt").value.trim();
+
+      if (!nickname || !sigungu) { alert("닉네임과 구를 입력해주세요!"); return; }
+      userInfo = { nickname, sigungu, apt, fullRegion: `인천광역시 ${sigungu} ${apt}` };
+
+      document.getElementById("user-info-text").innerText = `👤 ${userInfo.nickname} (${userInfo.sigungu})`;
+      switchScreen("screen-game");
+    }
+
+    // 출석체크 시스템 (오늘의 버프 적용: 2배 보상)
+    function checkAttendance() {
+      if (isCheckedToday) {
+        alert("이미 오늘 출석체크를 완료하셨습니다!");
+        return;
+      }
+      isCheckedToday = true;
+      // 오늘의 버프 적용으로 기본 100점 * 2 = 200점 지급
+      score += 200;
+      document.getElementById("score").innerText = score;
+      
+      const attendBtn = document.getElementById("attend-btn");
+      attendBtn.innerText = "출석 완료! (내일 다시 오세요)";
+      attendBtn.disabled = true;
+      attendBtn.style.background = "#bdc3c7";
+      alert("🎁 [출석 보상 지급] 오늘의 버프 적용으로 200점이 적립되었습니다!");
+    }
+
+    async function initCam() {
+      if (isStarted) return;
+      document.getElementById("start-btn").innerText = "로딩 중...";
+      try {
+        model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+        webcam = new tmImage.Webcam(220, 220, true);
+        await webcam.setup();
+        await webcam.play();
+        window.requestAnimationFrame(loop);
+
+        document.getElementById("webcam-container").innerHTML = "";
+        document.getElementById("webcam-container").appendChild(webcam.canvas);
+        document.getElementById("start-btn").innerText = "분리수거 감지 중...";
+        document.getElementById("start-btn").disabled = true;
+        isStarted = true;
+      } catch(e) {
+        alert("모델 폴더(./model/)를 확인해주세요.");
+        document.getElementById("start-btn").innerText = "카메라 켜기 📷";
+      }
+    }
+
+    async function loop() {
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const prediction = await model.predict(webcam.canvas);
+      let highest = prediction[0];
+      for (let i = 1; i < prediction.length; i++) {
+        if (prediction[i].probability > highest.probability) highest = prediction[i];
+      }
+
+      const className = highest.className;
+      const probability = (highest.probability * 100).toFixed(0);
+
+      const labelElement = document.getElementById("predicted-label");
+      const guideElement = document.getElementById("disposal-guide");
+
+      if (highest.probability > 0.70) {
+        labelElement.innerText = `${className} (${probability}%)`;
+        if (guideMap[className]) {
+          guideElement.innerText = guideMap[className].guide;
+          const badge = document.getElementById(guideMap[className].checkId);
+          if (badge && badge.classList.contains("badge-wait")) {
+            badge.innerText = "완료!";
+            badge.className = "badge badge-done";
+            score += 150; // 미션 성공 시 점수 획득
+            document.getElementById("score").innerText = score;
+          }
+        }
+      } else {
+        labelElement.innerText = "쓰레기를 비춰주세요";
+        guideElement.innerText = "물체를 카메라 중앙 가까이 대어주세요.";
+      }
+    }
+
+    // 게임 완료 및 월말 1000위 선정 결과 창 이동
+    function finishGame() {
+      document.getElementById("final-score").innerText = score;
+      document.getElementById("result-region-title").innerText = `📍 ${userInfo.fullRegion} 10월(10/01~10/30) 최종 랭킹`;
+
+      // 랭킹 시뮬레이션 (점수에 따라 순위 부여)
+      let rank = 1250;
+      if (score >= 500) rank = 42; // 상위권
+      else if (score >= 300) rank = 850; // 1000위 이내 안정권
+
+      document.getElementById("my-rank-num").innerText = rank;
+
+      const prizeContainer = document.getElementById("prize-badge-container");
+      if (rank <= 1000) {
+        prizeContainer.innerHTML = `<div class="prize-tag">🎁 상위 1,000명 달성! 친환경 기프티콘 및 종량제 봉투 지급 대상</div>`;
+      } else {
+        prizeContainer.innerHTML = `<div style="font-size:12px; color:#c0392b; margin-top:6px;">아쉽게 1,000위 밖입니다! 아래 캐시 전환소를 이용해보세요.</div>`;
+      }
+
+      // 캐시 환전금 계산 (1000점당 100원)
+      const calculatedCash = Math.floor(score / 1000) * 100;
+      document.getElementById("cash-amount").innerText = calculatedCash.toLocaleString() + "원";
+
+      switchScreen("screen-result");
+    }
+
+    // 포인트 캐시 전환 기능
+    function convertToCash() {
+      if (score < 1000) {
+        alert("캐시 전환은 최소 1,000점 이상부터 가능합니다!");
+        return;
+      }
+      const cash = Math.floor(score / 1000) * 100;
+      alert(`🎉 성공적으로 ${cash.toLocaleString()}원이 계정 캐시로 전환되었습니다!`);
+      score = score % 1000; // 남은 잔여 포인트
+      document.getElementById("score").innerText = score;
+      document.getElementById("cash-amount").innerText = "0원";
+    }
+
+    function restartGame() {
+      switchScreen("screen-game");
+    }
+
+    function switchScreen(screenId) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      document.getElementById(screenId).classList.add("active");
+    }
+  </script>
+</body>
+</html>
